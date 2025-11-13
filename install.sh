@@ -79,3 +79,4 @@ trivy fs .
 echo
 echo "✅ Installation and file scan completed successfully!"
 echo "=========================================="
+# now update its
