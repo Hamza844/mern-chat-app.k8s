@@ -1,11 +1,5 @@
 pipeline {
-    agent {
-        docker {
-            image 'ubuntu:22.04'
-            args '--privileged -v /var/run/docker.sock:/var/run/docker.sock'
-        }
-    }
-
+    agent 
     stages {
         stage('Install Declarative Tool') {
             steps {
