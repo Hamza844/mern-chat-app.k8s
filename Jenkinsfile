@@ -4,7 +4,7 @@ pipeline {
     environment {
         // SonarQube server configured in Jenkins (Manage Jenkins -> Configure System)
         SONARQUBE_SERVER = 'SonarQube'
-        SONAR_TOKEN = credentials('sonar-token') // ID of the token you added in Jenkins
+        SONAR_TOKEN = credentials('SONAR_TOKEN') // ID of the token you added in Jenkins
     }
 
     stages {
