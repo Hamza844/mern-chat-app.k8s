@@ -10,5 +10,9 @@ pipeline {
                 '''
             }
         }
+        stage("File scan") {
+            sh ' trivy fs .'
+            echo "file is sucessfully scan"
+        }
     }
 }
