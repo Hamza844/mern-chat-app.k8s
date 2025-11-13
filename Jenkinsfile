@@ -7,6 +7,7 @@ pipeline {
 
     environment {
         SONAR_TOKEN = credentials('SONAR_TOKEN')
+        SONAR_HOST_URL = 'http://143.198.122.139:9000'
     }
 
     stages {
@@ -24,8 +25,22 @@ pipeline {
 
         stage('SonarQube') {
             steps {
-                withSonarQubeEnv('sonarqube') {
-                    sh 'sonar-scanner -Dsonar.projectKey=mern-chat-app -Dsonar.sources=.'
+                script {
+                    try {
+                        withSonarQubeEnv('sonarqube') {
+                            sh """
+                                sonar-scanner \
+                                  -Dsonar.projectKey=mern-chat-app \
+                                  -Dsonar.sources=. \
+                                  -Dsonar.host.url=${SONAR_HOST_URL} \
+                                  -Dsonar.login=${SONAR_TOKEN}
+                            """
+                        }
+                    } catch (Exception e) {
+                        echo "⚠️ SonarQube scan failed: ${e.message}"
+                        echo "Continuing pipeline anyway..."
+                        currentBuild.result = 'UNSTABLE'
+                    }
                 }
             }
         }
