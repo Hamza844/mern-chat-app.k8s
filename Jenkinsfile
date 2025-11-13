@@ -1,46 +1,56 @@
 pipeline {
     agent any
 
-    tools {
-        'org.sonarsource.scanner.cli:sonar-scanner-cli' 'SonarScanner'
-    }
-
     environment {
         SONAR_TOKEN = credentials('SONAR_TOKEN')
         SONAR_HOST_URL = 'http://143.198.122.139:9000'
+        PROJECT_KEY = 'mern-chat-app'
     }
 
     stages {
-        stage('Install') {
+        stage('Install Tools') {
             steps {
+                echo '🚀 Installing Docker and Trivy...'
                 sh 'chmod +x install.sh && ./install.sh'
             }
         }
 
-        stage('Trivy Scan') {
+        stage('Verify Installation') {
             steps {
-                sh 'trivy fs .'
+                echo '🔍 Verifying tools...'
+                sh '''
+                    echo "Docker: $(docker --version)"
+                    echo "Trivy: $(trivy --version)"
+                '''
             }
         }
 
-        stage('SonarQube') {
+        stage('Checkout') {
             steps {
-                script {
-                    try {
-                        withSonarQubeEnv('sonarqube') {
-                            sh """
-                                sonar-scanner \
-                                  -Dsonar.projectKey=mern-chat-app \
-                                  -Dsonar.sources=. \
-                                  -Dsonar.host.url=${SONAR_HOST_URL} \
-                                  -Dsonar.login=${SONAR_TOKEN}
-                            """
-                        }
-                    } catch (Exception e) {
-                        echo "⚠️ SonarQube scan failed: ${e.message}"
-                        echo "Continuing pipeline anyway..."
-                        currentBuild.result = 'UNSTABLE'
-                    }
+                echo '📥 Checking out code...'
+                checkout scm
+            }
+        }
+
+        stage('Security Scan') {
+            steps {
+                echo '🔍 Running Trivy file system scan...'
+                sh 'trivy fs --severity HIGH,CRITICAL .'
+            }
+        }
+
+        stage('Code Quality') {
+            steps {
+                echo '📊 Running SonarQube analysis...'
+                withSonarQubeEnv('sonarqube') {
+                    sh """
+                        sonar-scanner \
+                          -Dsonar.projectKey=${PROJECT_KEY} \
+                          -Dsonar.sources=. \
+                          -Dsonar.host.url=${SONAR_HOST_URL} \
+                          -Dsonar.login=${SONAR_TOKEN} \
+                          -Dsonar.exclusions=**/node_modules/**,**/dist/**
+                    """
                 }
             }
         }
