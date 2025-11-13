@@ -2,9 +2,13 @@ pipeline {
     agent any
 
     stages {
-        stage('Hello') {
+        stage('Install Declarative Tool') {  // Fixed typo: "decalerative" → "Declarative"
             steps {
-                echo 'Hello, World!'
+                echo 'Installing declarative tools...'
+                sh '''
+                    chmod +x install.sh
+                    ./install.sh
+                '''
             }
         }
     }
