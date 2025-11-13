@@ -1,48 +1,33 @@
 pipeline {
     agent any
 
+    tools {
+        'org.sonarsource.scanner.cli:sonar-scanner-cli' 'SonarScanner'
+    }
+
     environment {
-        // SonarQube server configured in Jenkins (Manage Jenkins -> Configure System)
-        SONARQUBE_SERVER = 'SonarQube'
-        SONAR_TOKEN = credentials('SONAR_TOKEN') // ID of the token you added in Jenkins
+        SONAR_TOKEN = credentials('SONAR_TOKEN')
     }
 
     stages {
-        stage('Install Declarative Tool') {
+        stage('Install') {
             steps {
-                echo 'Installing declarative tools...'
-                sh '''
-                    chmod +x install.sh
-                    ./install.sh
-                '''
+                sh 'chmod +x install.sh && ./install.sh'
             }
         }
 
-        stage('File Scan with Trivy') {
+        stage('Trivy Scan') {
             steps {
-                echo 'Running Trivy file system scan...'
                 sh 'trivy fs .'
-                echo 'File scan completed successfully!'
             }
         }
 
-        stage('SonarQube Analysis') {
+        stage('SonarQube') {
             steps {
-                echo 'Running SonarQube analysis...'
-                withSonarQubeEnv('SonarQube') { 
-                    sh "sonar-scanner -Dsonar.projectKey=mern-chat-app -Dsonar.sources=. -Dsonar.host.url=http://100.24.23.144:8080 -Dsonar.login=$SONAR_TOKEN"
+                withSonarQubeEnv('sonarqube') {
+                    sh 'sonar-scanner -Dsonar.projectKey=mern-chat-app -Dsonar.sources=.'
                 }
-                echo 'SonarQube scan completed successfully!'
             }
-        }
-    }
-
-    post {
-        success {
-            echo '✅ Pipeline finished successfully!'
-        }
-        failure {
-            echo '❌ Pipeline failed!'
         }
     }
 }
