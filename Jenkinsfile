@@ -2,7 +2,7 @@ pipeline {
     agent any
 
     environment {
-        SONAR_TOKEN = credentials('sonar')  // Changed from 'SONAR_TOKEN' to 'sonar'
+        SONAR_TOKEN = credentials('Sonar')  // Changed from 'SONAR_TOKEN' to 'sonar'
         SONAR_HOST_URL = 'http://143.198.122.139:9000'
         PROJECT_KEY = 'mern-chat-app'
     }
