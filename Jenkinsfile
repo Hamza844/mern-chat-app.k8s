@@ -33,7 +33,7 @@ pipeline {
             steps {
                 echo '📊 Running SonarQube analysis...'
                 script {
-                    def scannerHome = tool 'sonars-cnaeer'
+                    def scannerHome = tool 'sonar-scnaeer'
                     
                     // Install Node.js if not present (inline)
                     sh '''
