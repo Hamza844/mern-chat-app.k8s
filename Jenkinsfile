@@ -9,6 +9,7 @@ pipeline {
         DOCKER_USERNAME = credentials('Docker_USERNAME')
         DOCKER_TOKEN = credentials('Docker_Token')
         IMAGE_NAME = "mernchat-app"
+        DOCKERHUB_CREDS = credentials('dockerhub-creds')
     }
 
     stages {
@@ -114,10 +115,9 @@ pipeline {
         stage('Push Docker Image') {
             steps {
                 echo "📤 Pushing image to Docker Hub..."
-
                 sh """
-                    echo "${DOCKER_TOKEN_PSW}" | docker login -u "${DOCKER_USERNAME_USR}" --password-stdin
-                    docker push ${IMAGE_NAME}:latest
+                echo "${DOCKERHUB_CREDS_PSW}" | docker login -u "${DOCKERHUB_CREDS_USR}" --password-stdin
+                docker push ${DOCKERHUB_CREDS_USR}/${IMAGE_NAME}:latest
                 """
             }
         }
