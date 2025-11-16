@@ -111,5 +111,5 @@ pipeline {
                 ])
             }
         }
-    } // stages
+    }
 }
