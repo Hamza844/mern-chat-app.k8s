@@ -112,6 +112,7 @@ pipeline {
                 ])
             }
         }
+        
         stage('Push Docker Image') {
             steps {
                 echo "📤 Pushing image to Docker Hub..."
@@ -119,6 +120,28 @@ pipeline {
                 echo "${DOCKERHUB_CREDS_PSW}" | docker login -u "${DOCKERHUB_CREDS_USR}" --password-stdin
                 docker push ${DOCKERHUB_CREDS_USR}/${IMAGE_NAME}:latest
                 """
+            }
+        }
+
+        stage('Deploy to Kubernetes using Helm') {
+            steps {
+                echo '🚀 Deploying to Kubernetes using Helm...'
+                script {
+                    sh """
+                        # Navigate to your chart directory
+                        cd /home/helm/node-app
+
+                        # Upgrade or install the application in the prod namespace
+                        helm upgrade --install mern-chatapp-prod ./ --namespace prod --set image.repository=${DOCKERHUB_CREDS_USR}/${IMAGE_NAME} --set image.tag=latest
+
+                        # Wait for deployment to complete
+                        kubectl rollout status deployment/mern-chatapp-prod -n prod --timeout=300s
+
+                        echo "✅ Deployment completed successfully!"
+                        echo "📊 Checking deployment status..."
+                        kubectl get all -n prod
+                    """
+                }
             }
         }
     }
