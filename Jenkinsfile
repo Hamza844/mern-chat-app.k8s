@@ -116,7 +116,7 @@ pipeline {
                 echo "📤 Pushing image to Docker Hub..."
 
                 sh """
-                    echo "${DOCKERHUB_CREDS_PSW}" | docker login -u "${DOCKERHUB_CREDS_USR}" --password-stdin
+                    echo "${DOCKER_TOKEN_PSW}" | docker login -u "${DOCKER_USERNAME_USR}" --password-stdin
                     docker push ${IMAGE_NAME}:latest
                 """
             }
