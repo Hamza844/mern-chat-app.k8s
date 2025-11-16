@@ -5,8 +5,10 @@ pipeline {
         SONAR_TOKEN = credentials('Sonar')
         SONAR_HOST_URL = 'http://143.198.122.139:9000'
         PROJECT_KEY = 'mern-chat-app'
-        DOCKERHUB_CREDS = credentials('dockerhub-creds')
-        IMAGE_NAME = "hamza844/mernchat-app"   // Your Docker Hub repo
+
+        DOCKER_USERNAME = credentials('Docker_USERNAME')
+        DOCKER_TOKEN = credentials('Docker_Token')
+        IMAGE_NAME = "mernchat-app"
     }
 
     stages {
@@ -20,8 +22,9 @@ pipeline {
 
         stage('Security Scan (Filesystem)') {
             steps {
-                echo '🔍 Running Trivy filesystem scan...'
-                sh 'trivy fs --severity HIGH,CRITICAL . > fs-scan.txt || true'
+                echo '🔍 Running Trivy filesystem scan (HIGH,CRITICAL)...'
+                // trivy already installed on server as you said
+                sh 'trivy fs --severity HIGH,CRITICAL . || true'
             }
         }
 
@@ -30,6 +33,16 @@ pipeline {
                 echo '📊 Running SonarQube analysis...'
                 script {
                     def scannerHome = tool 'sonar-scanner'
+
+                    // Ensure Node available for scanner if your project needs it
+                    sh '''
+                        if ! command -v node &> /dev/null; then
+                            echo "Node not found, installing..."
+                            curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash -
+                            sudo apt-get install -y nodejs
+                        fi
+                        echo "Node version: $(node --version || true)"
+                    '''
 
                     withSonarQubeEnv('SonarQube') {
                         sh """
@@ -46,7 +59,9 @@ pipeline {
 
         stage('Quality Gate') {
             steps {
-                timeout(time: 3, unit: 'MINUTES') {
+                echo '⏳ Waiting for SonarQube Quality Gate...'
+                timeout(time: 5, unit: 'MINUTES') {
+                    // set abortPipeline:true if you want to stop on failure
                     waitForQualityGate abortPipeline: false
                 }
             }
@@ -54,35 +69,48 @@ pipeline {
 
         stage('Build Docker Image') {
             steps {
-                echo "🐳 Building Docker image..."
-                sh """
-                    docker build -t ${IMAGE_NAME}:latest .
-                """
+                echo '🐳 Building Docker image...'
+                script {
+                    sh """
+                        # build image
+                        docker build -t ${IMAGE_NAME}:latest .
+                        # tag image with your Docker Hub username
+                        docker tag ${IMAGE_NAME}:latest ${DOCKER_USERNAME}/${IMAGE_NAME}:latest
+
+                        # login and push (optional). If you don't want to push, comment the login/push lines.
+                        echo "${DOCKER_TOKEN}" | docker login -u "${DOCKER_USERNAME}" --password-stdin
+                        docker push ${DOCKER_USERNAME}/${IMAGE_NAME}:latest
+                    """
+                }
             }
         }
 
         stage('Trivy Scan Image') {
             steps {
-                sh """
-                    trivy image --severity HIGH,CRITICAL \
-                    --format html -o trivy-image-report.html \
-                    ${IMAGE_NAME}:latest || true
-                """
+                echo '🔍 Scanning Docker image with Trivy (image scan)...'
+                script {
+                    // Saves an HTML report file
+                    sh """
+                        trivy image --format html --output trivy-report.html ${DOCKER_USERNAME}/${IMAGE_NAME}:latest || true
+                    """
+                }
             }
         }
 
         stage('Publish Trivy Report') {
             steps {
-                echo '📄 Publishing HTML report...'
-                publishHTML([
-                    reportName: 'Trivy Scan Report',
+                echo '📄 Publishing Trivy HTML report to Jenkins...'
+                // requires the HTML Publisher Plugin to be installed in Jenkins
+                publishHTML(target: [
+                    allowMissing: false,
+                    alwaysLinkToLastBuild: true,
+                    keepAll: true,
                     reportDir: '.',
-                    reportFiles: 'trivy-image-report.html',
-                    keepAll: true
+                    reportFiles: 'trivy-report.html',
+                    reportName: 'Trivy Security Scan Report'
                 ])
             }
         }
-
         stage('Push Docker Image') {
             steps {
                 echo "📤 Pushing image to Docker Hub..."
