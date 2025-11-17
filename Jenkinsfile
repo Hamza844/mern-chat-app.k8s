@@ -52,7 +52,6 @@ pipeline {
                               -Dsonar.sources=. \
                               -Dsonar.host.url=${SONAR_HOST_URL} \
                               -Dsonar.exclusions=**/node_modules/**,**/dist/**
-                              -Dsonar.javascript.node.maxspace=512
                         """
                     }
                 }
