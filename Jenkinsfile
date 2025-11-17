@@ -15,11 +15,12 @@ pipeline {
         // Kubernetes Configuration
         KUBECONFIG = '/var/lib/jenkins/.kube/config'
         K8S_NAMESPACE = 'prod'
-        HELM_RELEASE = 'mern-chatapp-prod'
+        HELM_RELEASE = 'mern-chatapp-prod-node-app'
         HELM_CHART_PATH = '/home/helm/node-app'
     }
 
     stages {
+        
         stage('Checkout') {
             steps {
                 echo '📥 Checking out code...'
