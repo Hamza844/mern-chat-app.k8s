@@ -119,7 +119,7 @@ pipeline {
                 script {
                     sh """
                         echo "${DOCKERHUB_CREDS_PSW}" | docker login -u "${DOCKERHUB_CREDS_USR}" --password-stdin
-                        docker push ${""}/${IMAGE_NAME}:${IMAGE_TAG}
+                        docker push ${DOCKERHUB_CREDS_USR}/${IMAGE_NAME}:${IMAGE_TAG}
                         docker push ${DOCKERHUB_CREDS_USR}/${IMAGE_NAME}:latest
                         echo "✅ Image pushed: ${DOCKERHUB_CREDS_USR}/${IMAGE_NAME}:${IMAGE_TAG}"
                     """
