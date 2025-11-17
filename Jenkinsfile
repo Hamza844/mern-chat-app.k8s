@@ -3,7 +3,7 @@ pipeline {
 
     environment {
         SONAR_TOKEN = credentials('Sonar')
-        SONAR_HOST_URL = 'http://143.198.122.139:9000'
+        SONAR_HOST_URL = 'http://98.94.55.71:9000'
         PROJECT_KEY = 'mern-chat-app'
 
         DOCKER_USERNAME = credentials('Docker_USERNAME')
