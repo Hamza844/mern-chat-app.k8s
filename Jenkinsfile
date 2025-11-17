@@ -2,18 +2,24 @@ pipeline {
     agent any
 
     environment {
+        // SonarQube Configuration
         SONAR_TOKEN = credentials('Sonar')
         SONAR_HOST_URL = 'http://98.94.55.71:9000'
         PROJECT_KEY = 'mern-chat-app'
 
-        DOCKER_USERNAME = credentials('Docker_USERNAME')
-        DOCKER_TOKEN = credentials('Docker_Token')
-        IMAGE_NAME = "mernchat-app"
+        // Docker Configuration
         DOCKERHUB_CREDS = credentials('dockerhub-creds')
+        IMAGE_NAME = "mernchat-app"
+        IMAGE_TAG = "${env.BUILD_NUMBER}" // Use build number for versioning
+        
+        // Kubernetes Configuration
+        KUBECONFIG = '/var/lib/jenkins/.kube/config'
+        K8S_NAMESPACE = 'prod'
+        HELM_RELEASE = 'mern-chatapp-prod'
+        HELM_CHART_PATH = '/home/helm/node-app'
     }
 
     stages {
-
         stage('Checkout') {
             steps {
                 echo '📥 Checking out code...'
@@ -21,11 +27,10 @@ pipeline {
             }
         }
 
-        stage('Security Scan (Filesystem)') {
+        stage('Security Scan - Filesystem') {
             steps {
                 echo '🔍 Running Trivy filesystem scan (HIGH,CRITICAL)...'
-                // trivy already installed on server as you said
-                sh 'trivy fs --severity HIGH,CRITICAL . || true'
+                sh 'trivy fs --severity HIGH,CRITICAL --exit-code 0 . || true'
             }
         }
 
@@ -34,8 +39,7 @@ pipeline {
                 echo '📊 Running SonarQube analysis...'
                 script {
                     def scannerHome = tool 'sonar-scanner'
-
-                    // Ensure Node available for scanner if your project needs it
+                    
                     sh '''
                         if ! command -v node &> /dev/null; then
                             echo "Node not found, installing..."
@@ -62,7 +66,6 @@ pipeline {
             steps {
                 echo '⏳ Waiting for SonarQube Quality Gate...'
                 timeout(time: 5, unit: 'MINUTES') {
-                    // set abortPipeline:true if you want to stop on failure
                     waitForQualityGate abortPipeline: false
                 }
             }
@@ -73,35 +76,37 @@ pipeline {
                 echo '🐳 Building Docker image...'
                 script {
                     sh """
-                        # build image
-                        docker build -t ${IMAGE_NAME}:latest .
-                        # tag image with your Docker Hub username
-                        docker tag ${IMAGE_NAME}:latest ${DOCKER_USERNAME}/${IMAGE_NAME}:latest
-
-                        # login and push (optional). If you don't want to push, comment the login/push lines.
-                        echo "${DOCKER_TOKEN}" | docker login -u "${DOCKER_USERNAME}" --password-stdin
-                        docker push ${DOCKER_USERNAME}/${IMAGE_NAME}:latest
+                        # Build image with build number tag
+                        docker build -t ${IMAGE_NAME}:${IMAGE_TAG} .
+                        
+                        # Tag with DockerHub username and build number
+                        docker tag ${IMAGE_NAME}:${IMAGE_TAG} ${DOCKERHUB_CREDS_USR}/${IMAGE_NAME}:${IMAGE_TAG}
+                        
+                        # Also tag as latest
+                        docker tag ${IMAGE_NAME}:${IMAGE_TAG} ${DOCKERHUB_CREDS_USR}/${IMAGE_NAME}:latest
+                        
+                        echo "✅ Docker image built successfully: ${DOCKERHUB_CREDS_USR}/${IMAGE_NAME}:${IMAGE_TAG}"
                     """
                 }
             }
         }
 
-        stage('Trivy Scan Image') {
+        stage('Security Scan - Docker Image') {
             steps {
-                echo '🔍 Scanning Docker image with Trivy (image scan)...'
+                echo '🔍 Scanning Docker image with Trivy...'
                 script {
-                    // Saves an HTML report file
                     sh """
-                        trivy image --format html --output trivy-report.html ${DOCKER_USERNAME}/${IMAGE_NAME}:latest || true
+                        trivy image --format html --output trivy-report.html \
+                          --severity HIGH,CRITICAL \
+                          ${DOCKERHUB_CREDS_USR}/${IMAGE_NAME}:${IMAGE_TAG} || true
                     """
                 }
             }
         }
 
-        stage('Publish Trivy Report') {
+        stage('Publish Security Report') {
             steps {
                 echo '📄 Publishing Trivy HTML report to Jenkins...'
-                // requires the HTML Publisher Plugin to be installed in Jenkins
                 publishHTML(target: [
                     allowMissing: false,
                     alwaysLinkToLastBuild: true,
@@ -112,37 +117,129 @@ pipeline {
                 ])
             }
         }
-        
-        stage('Push Docker Image') {
+
+        stage('Push Docker Image to Registry') {
             steps {
-                echo "📤 Pushing image to Docker Hub..."
-                sh """
-                echo "${DOCKERHUB_CREDS_PSW}" | docker login -u "${DOCKERHUB_CREDS_USR}" --password-stdin
-                docker push ${DOCKERHUB_CREDS_USR}/${IMAGE_NAME}:latest
-                """
+                echo "📤 Pushing Docker image to Docker Hub..."
+                script {
+                    sh """
+                        # Login to Docker Hub
+                        echo "${DOCKERHUB_CREDS_PSW}" | docker login -u "${DOCKERHUB_CREDS_USR}" --password-stdin
+                        
+                        # Push with build number tag
+                        docker push ${DOCKERHUB_CREDS_USR}/${IMAGE_NAME}:${IMAGE_TAG}
+                        
+                        # Push latest tag
+                        docker push ${DOCKERHUB_CREDS_USR}/${IMAGE_NAME}:latest
+                        
+                        echo "✅ Image pushed: ${DOCKERHUB_CREDS_USR}/${IMAGE_NAME}:${IMAGE_TAG}"
+                        echo "✅ Image pushed: ${DOCKERHUB_CREDS_USR}/${IMAGE_NAME}:latest"
+                    """
+                }
             }
         }
 
-        stage('Deploy to Kubernetes using Helm') {
+        stage('Deploy to Kubernetes with Helm') {
             steps {
                 echo '🚀 Deploying to Kubernetes using Helm...'
                 script {
                     sh """
-                        # Navigate to your chart directory
-                        cd /home/helm/node-app
-
-                        # Upgrade or install the application in the prod namespace
-                        helm upgrade --install mern-chatapp-prod ./ --namespace prod --set image.repository=${DOCKERHUB_CREDS_USR}/${IMAGE_NAME} --set image.tag=latest
-
-                        # Wait for deployment to complete
-                        kubectl rollout status deployment/mern-chatapp-prod -n prod --timeout=300s
-
+                        # Set Kubernetes config explicitly
+                        export KUBECONFIG=${KUBECONFIG}
+                        export HOME=/var/lib/jenkins
+                        
+                        # Verify Kubernetes connectivity
+                        echo "========================================="
+                        echo "Kubernetes Cluster Information"
+                        echo "========================================="
+                        kubectl cluster-info
+                        kubectl get nodes
+                        echo ""
+                        
+                        # Navigate to Helm chart directory
+                        cd ${HELM_CHART_PATH}
+                        
+                        # Validate Helm chart
+                        echo "========================================="
+                        echo "Validating Helm Chart"
+                        echo "========================================="
+                        helm lint .
+                        echo ""
+                        
+                        # Show current chart info
+                        helm show chart .
+                        echo ""
+                        
+                        # Deploy application with Helm
+                        echo "========================================="
+                        echo "Deploying Application: ${HELM_RELEASE}"
+                        echo "Namespace: ${K8S_NAMESPACE}"
+                        echo "Image: ${DOCKERHUB_CREDS_USR}/${IMAGE_NAME}:${IMAGE_TAG}"
+                        echo "========================================="
+                        
+                        helm upgrade --install ${HELM_RELEASE} . \
+                          --namespace ${K8S_NAMESPACE} \
+                          --create-namespace \
+                          --set image.repository=${DOCKERHUB_CREDS_USR}/${IMAGE_NAME} \
+                          --set image.tag=${IMAGE_TAG} \
+                          --set image.pullPolicy=Always \
+                          --wait \
+                          --timeout 10m \
+                          --atomic \
+                          --cleanup-on-fail
+                        
+                        echo ""
+                        echo "========================================="
+                        echo "Waiting for Deployment Rollout"
+                        echo "========================================="
+                        kubectl rollout status deployment/${HELM_RELEASE} -n ${K8S_NAMESPACE} --timeout=300s
+                        
+                        echo ""
+                        echo "========================================="
+                        echo "✅ Deployment Status"
+                        echo "========================================="
+                        kubectl get all -n ${K8S_NAMESPACE}
+                        echo ""
+                        kubectl get pods -n ${K8S_NAMESPACE} -o wide
+                        echo ""
+                        
+                        # Get deployed services
+                        echo "========================================="
+                        echo "📊 Service Information"
+                        echo "========================================="
+                        kubectl get svc -n ${K8S_NAMESPACE}
+                        
+                        echo ""
                         echo "✅ Deployment completed successfully!"
-                        echo "📊 Checking deployment status..."
-                        kubectl get all -n prod
+                        echo "📦 Deployed Version: ${IMAGE_TAG}"
                     """
                 }
             }
+        }
+    }
+
+    post {
+        always {
+            echo '🧹 Cleaning up local Docker images...'
+            sh """
+                docker rmi ${IMAGE_NAME}:${IMAGE_TAG} || true
+                docker rmi ${DOCKERHUB_CREDS_USR}/${IMAGE_NAME}:${IMAGE_TAG} || true
+                docker logout || true
+            """
+        }
+        success {
+            echo '✅ ========================================='
+            echo '✅ Pipeline completed successfully!'
+            echo '✅ ========================================='
+            echo "✅ Image: ${DOCKERHUB_CREDS_USR}/${IMAGE_NAME}:${IMAGE_TAG}"
+            echo "✅ Deployed to: ${K8S_NAMESPACE} namespace"
+            echo '✅ ========================================='
+        }
+        failure {
+            echo '❌ ========================================='
+            echo '❌ Pipeline failed!'
+            echo '❌ Please check the logs above for details'
+            echo '❌ ========================================='
         }
     }
 }
