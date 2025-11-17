@@ -3,7 +3,7 @@ pipeline {
 
     environment {
         // SonarQube Configuration
-        SONAR_TOKEN = credentials('Sonar')
+        SONAR_TOKEN = credentials('Sona')
         SONAR_HOST_URL = 'http://98.94.55.71:9000'
         PROJECT_KEY = 'mern-chat-app'
 
